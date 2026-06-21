@@ -1,0 +1,13 @@
+services:
+  alpr-service:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/input:/data/input
+      - ./data/processed:/data/processed
+      - ./data/logs:/data/logs
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+    restart: unless-stopped

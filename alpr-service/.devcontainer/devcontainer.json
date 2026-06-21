@@ -1,0 +1,28 @@
+{
+  "name": "ALPR Service (Dev)",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=${localWorkspaceFolder}/data/input,target=/data/input,type=bind",
+    "source=${localWorkspaceFolder}/data/processed,target=/data/processed,type=bind",
+    "source=${localWorkspaceFolder}/data/logs,target=/data/logs,type=bind"
+  ],
+  "forwardPorts": [8080],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "ms-python.debugpy"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
+  "postCreateCommand": "pip install --no-cache-dir -r /workspace/requirements.txt"
+}
