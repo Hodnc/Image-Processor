@@ -18,6 +18,7 @@
 
 import logging
 import time
+from io import BytesIO
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -25,10 +26,15 @@ from typing import Optional
 import cv2           # OpenCV — used to load image files and decode byte payloads
 import numpy as np   # NumPy — OpenCV returns images as NumPy arrays
 from fast_alpr import ALPR
+from PIL import Image, ImageFile, UnidentifiedImageError
 
 from alpr_service.config import DETECTOR_MODEL, OCR_MODEL
 
 logger = logging.getLogger(__name__)
+
+# Allow Pillow to read slightly malformed/truncated JPEGs that are common
+# in some camera/export pipelines.
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 # ---------------------------------------------------------------------------
@@ -88,10 +94,7 @@ class ALPRProcessor:
         """Load an image from disk and run ALPR on it."""
         start = time.perf_counter()
         try:
-            # cv2.imread reads the image file from disk and decodes it into a
-            # NumPy array with shape (height, width, 3) in BGR colour order.
-            # It returns None (not an exception) if the file cannot be decoded.
-            img = cv2.imread(str(image_path))
+            img = self._decode_file(image_path)
             if img is None:
                 # Return a structured error rather than raising — the caller
                 # can then log it and move the file without crashing.
@@ -112,12 +115,7 @@ class ALPRProcessor:
         """Decode a raw image byte payload (e.g. from an HTTP upload) and run ALPR."""
         start = time.perf_counter()
         try:
-            # np.frombuffer interprets the raw bytes as a 1-D array of uint8
-            # values.  cv2.imdecode then parses that array as if it were an
-            # image file (auto-detecting JPEG, PNG, etc.) and returns the same
-            # kind of NumPy (h, w, 3) array that cv2.imread would produce.
-            arr = np.frombuffer(data, dtype=np.uint8)
-            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            img = self._decode_bytes(data)
             if img is None:
                 return ProcessingResult(
                     plates=[],
@@ -135,6 +133,32 @@ class ALPRProcessor:
     # -----------------------------------------------------------------------
     # Internal helpers
     # -----------------------------------------------------------------------
+
+    def _decode_file(self, image_path: Path) -> Optional[np.ndarray]:
+        """Decode an image file using Pillow first, then OpenCV as fallback."""
+        try:
+            with image_path.open("rb") as fh:
+                return self._decode_bytes(fh.read())
+        except OSError:
+            return None
+
+    def _decode_bytes(self, data: bytes) -> Optional[np.ndarray]:
+        """Decode bytes into OpenCV BGR ndarray with tolerant fallback logic."""
+        # Pillow is generally more tolerant of malformed JPEG streams.
+        try:
+            with Image.open(BytesIO(data)) as pil_img:
+                rgb = pil_img.convert("RGB")
+                arr = np.array(rgb)
+                return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+        except (UnidentifiedImageError, OSError, ValueError):
+            pass
+
+        # Fallback to OpenCV decoder for any format Pillow could not parse.
+        try:
+            arr = np.frombuffer(data, dtype=np.uint8)
+            return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        except Exception:
+            return None
 
     def _run(self, img: np.ndarray, start: float) -> ProcessingResult:
         """Run the two-stage ALPR pipeline on a decoded image array."""
