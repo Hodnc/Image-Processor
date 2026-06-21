@@ -41,7 +41,8 @@ logger = logging.getLogger(__name__)
 class PlateResponse(BaseModel):
     """JSON representation of one detected licence plate."""
     plate_text: str               # e.g. "ABC123"
-    confidence: float             # 0.0–1.0
+    detection_confidence: float   # 0.0–1.0
+    ocr_confidence: float         # 0.0–1.0
     processing_duration_ms: float # Total time for this image
 
 
@@ -50,7 +51,7 @@ class ProcessResponse(BaseModel):
     filename: str                   # The original filename sent by the client
     plates: list[PlateResponse]     # Empty list when no plate was found
     processing_duration_ms: float   # Total time for this image
-    status: str                     # "success" | "no_plate_found"
+    status: str                     # "success" | "no_plate_found" | "plate_found_unreadable"
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +144,8 @@ def create_app(processor: ALPRProcessor, csv_logger: CSVLogger) -> FastAPI:
                     filename=filename,
                     source="api",
                     plate_text="",
-                    confidence="",
+                    detection_confidence="",
+                    ocr_confidence="",
                     processing_duration_ms=str(round(result.processing_duration_ms, 2)),
                     status="error",
                     error=result.error,
@@ -156,28 +158,29 @@ def create_app(processor: ALPRProcessor, csv_logger: CSVLogger) -> FastAPI:
             )
 
         # ---------------------------------------------------------------
-        # No plate detected — valid image, just no plate in it
+        # No plate detected or plate detected but OCR could not read it
         # ---------------------------------------------------------------
-        if not result.plates:
+        if result.status != "success":
             csv_logger.write(
                 LogEntry(
                     timestamp=now,
                     filename=filename,
                     source="api",
                     plate_text="",
-                    confidence="",
+                    detection_confidence="",
+                    ocr_confidence="",
                     processing_duration_ms=str(round(result.processing_duration_ms, 2)),
-                    status="no_plate_found",
+                    status=result.status,
                     error="",
                 )
             )
-            # Return 200 (not an error) — the request succeeded, the image
-            # just happened to have no readable plate in it.
+            # Return 200 (not an error) — the request succeeded, but either
+            # no plate was visible or OCR could not extract text.
             return ProcessResponse(
                 filename=filename,
                 plates=[],
                 processing_duration_ms=result.processing_duration_ms,
-                status="no_plate_found",
+                status=result.status,
             )
 
         # ---------------------------------------------------------------
@@ -190,7 +193,8 @@ def create_app(processor: ALPRProcessor, csv_logger: CSVLogger) -> FastAPI:
                     filename=filename,
                     source="api",
                     plate_text=plate.plate_text,
-                    confidence=str(plate.confidence),
+                    detection_confidence=str(plate.detection_confidence),
+                    ocr_confidence=str(plate.ocr_confidence),
                     processing_duration_ms=str(round(result.processing_duration_ms, 2)),
                     status="success",
                     error="",
@@ -202,7 +206,8 @@ def create_app(processor: ALPRProcessor, csv_logger: CSVLogger) -> FastAPI:
             plates=[
                 PlateResponse(
                     plate_text=p.plate_text,
-                    confidence=p.confidence,
+                    detection_confidence=p.detection_confidence,
+                    ocr_confidence=p.ocr_confidence,
                     processing_duration_ms=p.processing_duration_ms,
                 )
                 for p in result.plates

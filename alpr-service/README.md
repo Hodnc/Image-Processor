@@ -214,7 +214,8 @@ This page lets you test every endpoint directly in the browser — no Postman or
     "plates": [
         {
             "plate_text": "ABC123",
-            "confidence": 0.9871,
+        "detection_confidence": 0.9912,
+        "ocr_confidence": 0.9871,
             "processing_duration_ms": 148.3
         }
     ],
@@ -290,9 +291,10 @@ Log files are written to `data/logs/` on your host machine. A new file is create
 | `filename` | `car.jpg` | Original filename |
 | `source` | `api` or `watcher` | How the image was submitted |
 | `plate_text` | `ABC123` | Detected plate text (empty if none found) |
-| `confidence` | `0.9871` | Model confidence 0.0–1.0 (empty if no plate) |
+| `detection_confidence` | `0.9912` | Detector confidence 0.0–1.0 (empty if no plate) |
+| `ocr_confidence` | `0.9871` | OCR confidence 0.0–1.0 (empty if no plate) |
 | `processing_duration_ms` | `148.3` | How long the ALPR pipeline took, in milliseconds |
-| `status` | `success` | `success`, `no_plate_found`, or `error` |
+| `status` | `success` | `success`, `no_plate_found`, `plate_found_unreadable`, or `error` |
 | `error` | _(empty)_ | Error message when status is `error`, otherwise empty |
 
 **Important:** if an image contains two licence plates, **two rows** are written — one per plate. Both rows share the same `timestamp` and `filename`.
@@ -375,12 +377,13 @@ Content-Type: multipart/form-data
   "plates": [
     {
       "plate_text": "string",
-      "confidence": 0.0,
+      "detection_confidence": 0.0,
+      "ocr_confidence": 0.0,
       "processing_duration_ms": 0.0
     }
   ],
   "processing_duration_ms": 0.0,
-  "status": "success | no_plate_found"
+  "status": "success | no_plate_found | plate_found_unreadable"
 }
 ```
 
@@ -390,6 +393,7 @@ Content-Type: multipart/form-data
 |---|---|
 | `success` | One or more plates were found and read |
 | `no_plate_found` | The image was valid but contained no detectable plate |
+| `plate_found_unreadable` | A plate was detected, but OCR could not read any text |
 
 **HTTP error codes:**
 
@@ -407,6 +411,7 @@ Content-Type: multipart/form-data
 |---|---|---|
 | Corrupt or unreadable image | Logged as `error`, file moved to `processed/` | Returns HTTP 422 |
 | Image with no plates | Logged as `no_plate_found`, file moved to `processed/` | Returns 200 with `plates: []` |
+| Plate detected but OCR unreadable | Logged as `plate_found_unreadable`, file moved to `processed/` | Returns 200 with `plates: []` |
 | Unsupported file extension in `input/` | File silently ignored (not moved, not logged) | Returns HTTP 415 |
 | Filename conflict in `processed/` | Renamed `file_1.jpg`, `file_2.jpg`, … | N/A |
 | CSV write failure | Error printed to stdout, processing continues | Error printed to stdout |
@@ -422,9 +427,9 @@ Processing an image takes two stages:
 
 A YOLOv9 neural network scans the entire input image and outputs a list of bounding boxes — rectangular regions that the model believes contain a licence plate. This model was trained on a large dataset of vehicle images and can handle plates at various angles, distances, and lighting conditions.
 
-**Stage 2 — OCR** (`global-plates-mobile-vit-v2-model`)
+**Stage 2 — OCR** (`cct-s-v2-global-model`)
 
-Each bounding box from Stage 1 is cropped out of the image and fed into a MobileViT model that reads the characters on the plate. The model returns the plate text as a string along with a confidence score between 0 and 1. Higher confidence (closer to 1.0) means the model is more certain about what it read.
+Each bounding box from Stage 1 is cropped out of the image and fed into a MobileViT model that reads the characters on the plate. The result includes the plate text plus two confidence values: detector confidence for the plate box and OCR confidence for the text read. Higher confidence (closer to 1.0) means the model is more certain.
 
 Both models are ONNX format and run on CPU via ONNX Runtime — no GPU is required.
 

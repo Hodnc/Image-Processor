@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Pre-download ALPR ONNX models at build time so cold starts are fast
 RUN python -c "\
 from fast_alpr import ALPR; \
-ALPR(detector_model='yolo-v9-s-608-license-plate-end2end', ocr_model='global-plates-mobile-vit-v2-model'); \
+ALPR(detector_model='yolo-v9-s-608-license-plate-end2end', ocr_model='cct-s-v2-global-model'); \
 print('Models cached successfully.')"
 
 COPY alpr_service/ alpr_service/

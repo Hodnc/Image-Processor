@@ -65,6 +65,6 @@ SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp
 # licence plate in the image.
 DETECTOR_MODEL = "yolo-v9-t-384-license-plate-end2end"
 
-# OCR_MODEL: a MobileViT model that reads the text from each detected plate
+# OCR_MODEL: a CCT model that reads the text from each detected plate
 # region found by the detector above.
-OCR_MODEL = "global-plates-mobile-vit-v2-model"
+OCR_MODEL = "cct-s-v2-global-model"

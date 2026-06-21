@@ -122,13 +122,45 @@ class ImageEventHandler(FileSystemEventHandler):
 
         if result.error:
             # Something went wrong (e.g. corrupt file).  Log it and move on.
-            self._write_log(now, path.name, result.processing_duration_ms, "", "", "error", result.error)
+            self._write_log(
+                now,
+                path.name,
+                result.processing_duration_ms,
+                "",
+                "",
+                "",
+                "error",
+                result.error,
+            )
             logger.warning("Error processing '%s': %s", path.name, result.error)
 
-        elif not result.plates:
+        elif result.status == "no_plate_found":
             # The image was valid but no plate was found in it.
-            self._write_log(now, path.name, result.processing_duration_ms, "", "", "no_plate_found", "")
+            self._write_log(
+                now,
+                path.name,
+                result.processing_duration_ms,
+                "",
+                "",
+                "",
+                "no_plate_found",
+                "",
+            )
             logger.info("No plates found in '%s'", path.name)
+
+        elif result.status == "plate_found_unreadable":
+            # A plate-shaped region was found, but OCR could not read text from it.
+            self._write_log(
+                now,
+                path.name,
+                result.processing_duration_ms,
+                "",
+                "",
+                "",
+                "plate_found_unreadable",
+                "",
+            )
+            logger.info("Plate found but unreadable in '%s'", path.name)
 
         else:
             # One or more plates were found.  Write a separate CSV row for
@@ -161,7 +193,8 @@ class ImageEventHandler(FileSystemEventHandler):
         filename: str,
         duration_ms: float,
         plate_text: str,
-        confidence: str,
+        detection_confidence: str,
+        ocr_confidence: str,
         status: str,
         error: str,
     ) -> None:
@@ -172,7 +205,8 @@ class ImageEventHandler(FileSystemEventHandler):
                 filename=filename,
                 source="watcher",   # Always "watcher" from this module
                 plate_text=plate_text,
-                confidence=confidence,
+                detection_confidence=detection_confidence,
+                ocr_confidence=ocr_confidence,
                 processing_duration_ms=str(round(duration_ms, 2)),
                 status=status,
                 error=error,
@@ -188,7 +222,8 @@ class ImageEventHandler(FileSystemEventHandler):
             filename=filename,
             duration_ms=duration_ms,
             plate_text=plate.plate_text,
-            confidence=str(plate.confidence),
+            detection_confidence=str(plate.detection_confidence),
+            ocr_confidence=str(plate.ocr_confidence),
             status="success",
             error="",
         )

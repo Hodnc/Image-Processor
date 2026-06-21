@@ -49,7 +49,8 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 class PlateResult:
     """A single detected licence plate and its recognition metadata."""
     plate_text: str             # The plate string, e.g. "ABC123", normalised to uppercase
-    confidence: float           # 0.0–1.0 — how confident the OCR model is
+    detection_confidence: float  # 0.0–1.0 — how confident the detector is
+    ocr_confidence: float        # 0.0–1.0 — how confident the OCR model is
     processing_duration_ms: float  # Total time for this image, in milliseconds
 
 
@@ -58,6 +59,7 @@ class ProcessingResult:
     """The outcome of processing one image — may contain zero or more plates."""
     plates: list[PlateResult]       # Empty list when no plates were found
     processing_duration_ms: float   # Total processing time in milliseconds
+    status: str                     # "success", "no_plate_found", or "plate_found_unreadable"
     error: Optional[str] = None     # Set to an error message if something went wrong
 
     @property
@@ -101,6 +103,7 @@ class ALPRProcessor:
                 return ProcessingResult(
                     plates=[],
                     processing_duration_ms=0.0,
+                    status="error",
                     error=f"Could not decode image '{image_path.name}' — file may be corrupt or unsupported.",
                 )
             return self._run(img, start)
@@ -108,7 +111,7 @@ class ALPRProcessor:
             elapsed = (time.perf_counter() - start) * 1000
             logger.exception("Unexpected error processing file %s", image_path)
             return ProcessingResult(
-                plates=[], processing_duration_ms=round(elapsed, 2), error=str(exc)
+                plates=[], processing_duration_ms=round(elapsed, 2), status="error", error=str(exc)
             )
 
     def process_bytes(self, data: bytes, filename: str = "<upload>") -> ProcessingResult:
@@ -120,6 +123,7 @@ class ALPRProcessor:
                 return ProcessingResult(
                     plates=[],
                     processing_duration_ms=0.0,
+                    status="error",
                     error=f"Could not decode uploaded image '{filename}' — file may be corrupt or unsupported.",
                 )
             return self._run(img, start)
@@ -127,7 +131,7 @@ class ALPRProcessor:
             elapsed = (time.perf_counter() - start) * 1000
             logger.exception("Unexpected error processing upload %s", filename)
             return ProcessingResult(
-                plates=[], processing_duration_ms=round(elapsed, 2), error=str(exc)
+                plates=[], processing_duration_ms=round(elapsed, 2), status="error", error=str(exc)
             )
 
     # -----------------------------------------------------------------------
@@ -172,29 +176,41 @@ class ALPRProcessor:
         elapsed = round((time.perf_counter() - start) * 1000, 2)
 
         plates: list[PlateResult] = []
+        had_plate_detection = bool(raw)
         for r in raw:
             # r.ocr is None if the detector found a plate-shaped region but
             # the OCR model could not extract any text from it.
             if r.ocr is None or not r.ocr.text:
                 continue
 
+            # r.detection.confidence is the detector confidence for the plate box.
+            detection_confidence = round(float(r.detection.confidence), 4)
+
             # r.ocr.confidence can be either:
             #   • A single float  — overall confidence for the whole plate string
             #   • A list of floats — one confidence value per recognised character
             # We normalise both cases to a single representative float by
             # averaging the list when needed.
-            confidence = r.ocr.confidence
-            if isinstance(confidence, list):
-                confidence = sum(confidence) / len(confidence) if confidence else 0.0
+            ocr_confidence = r.ocr.confidence
+            if isinstance(ocr_confidence, list):
+                ocr_confidence = sum(ocr_confidence) / len(ocr_confidence) if ocr_confidence else 0.0
 
             plates.append(
                 PlateResult(
                     # .strip() removes accidental whitespace; .upper() ensures
                     # consistent casing regardless of what the model outputs.
                     plate_text=r.ocr.text.strip().upper(),
-                    confidence=round(float(confidence), 4),
+                    detection_confidence=detection_confidence,
+                    ocr_confidence=round(float(ocr_confidence), 4),
                     processing_duration_ms=elapsed,
                 )
             )
 
-        return ProcessingResult(plates=plates, processing_duration_ms=elapsed)
+        if plates:
+            status = "success"
+        elif had_plate_detection:
+            status = "plate_found_unreadable"
+        else:
+            status = "no_plate_found"
+
+        return ProcessingResult(plates=plates, processing_duration_ms=elapsed, status=status)

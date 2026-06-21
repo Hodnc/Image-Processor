@@ -40,9 +40,10 @@ class LogEntry:
     filename: str            # Original filename, e.g. "car.jpg"
     source: str              # "api" when sent via POST, "watcher" when auto-detected
     plate_text: str          # The recognised plate string, e.g. "ABC123" (empty if none)
-    confidence: str          # Detection confidence 0–1 as a string (empty if no plate)
+    detection_confidence: str  # Detection confidence 0–1 as a string (empty if no plate)
+    ocr_confidence: str        # OCR confidence 0–1 as a string (empty if no plate)
     processing_duration_ms: str  # How long ALPR took, in milliseconds
-    status: str              # "success", "no_plate_found", or "error"
+    status: str              # "success", "no_plate_found", "plate_found_unreadable", or "error"
     error: str               # Human-readable error message (empty on success)
 
 
