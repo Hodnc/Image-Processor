@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # OpenCV runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Pre-download ALPR ONNX models at build time so cold starts are fast
 RUN python -c "\
 from fast_alpr import ALPR; \
-ALPR(detector_model='yolo-v9-t-384-license-plate-end2end', ocr_model='global-plates-mobile-vit-v2-model'); \
+ALPR(detector_model='yolo-v9-s-608-license-plate-end2end', ocr_model='global-plates-mobile-vit-v2-model'); \
 print('Models cached successfully.')"
 
 COPY alpr_service/ alpr_service/
